@@ -1,0 +1,38 @@
+{
+  "name": "wargames",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.1",
+  "description": "Presentation-first operational mapping workspace for war game scenario design.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@mapbox/mapbox-gl-draw": "1.5.1",
+    "@supabase/ssr": "0.9.0",
+    "@supabase/supabase-js": "2.98.0",
+    "@sveltejs/adapter-node": "5.5.4",
+    "@sveltejs/kit": "2.53.4",
+    "@turf/area": "7.3.4",
+    "@turf/length": "7.3.4",
+    "mapbox-gl": "3.19.1",
+    "mgrs": "2.1.0",
+    "svelte": "5.53.7"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "6.2.4",
+    "@types/geojson": "7946.0.16",
+    "@types/mapbox__mapbox-gl-draw": "1.4.9",
+    "@types/node": "25.3.5",
+    "svelte-check": "4.4.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.1"
+  }
+}
