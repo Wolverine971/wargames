@@ -29,6 +29,9 @@ importers:
       '@turf/length':
         specifier: 7.3.4
         version: 7.3.4
+      leaflet:
+        specifier: 1.9.4
+        version: 1.9.4
       mapbox-gl:
         specifier: 3.19.1
         version: 3.19.1
@@ -45,6 +48,9 @@ importers:
       '@types/geojson':
         specifier: 7946.0.16
         version: 7946.0.16
+      '@types/leaflet':
+        specifier: 1.9.21
+        version: 1.9.21
       '@types/mapbox__mapbox-gl-draw':
         specifier: 1.4.9
         version: 1.4.9
@@ -538,6 +544,9 @@ packages:
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
 
+  '@types/leaflet@1.9.21':
+    resolution: {integrity: sha512-TbAd9DaPGSnzp6QvtYngntMZgcRk+igFELwR2N99XZn7RXUdKgsXMR+28bUO0rPsWp8MIu/f47luLIQuSLYv/w==}
+
   '@types/mapbox__mapbox-gl-draw@1.4.9':
     resolution: {integrity: sha512-8OtRdlSFbF/NDKg3CYQZPbI41JUwRPHIOB1f3fc3AG0Wb7CecSuuUG5EG+IsCmTHyzF6cyKpcjR/jcv62U3w6w==}
 
@@ -680,6 +689,9 @@ packages:
   kleur@4.1.5:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
+
+  leaflet@1.9.4:
+    resolution: {integrity: sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==}
 
   locate-character@3.0.0:
     resolution: {integrity: sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==}
@@ -1292,6 +1304,10 @@ snapshots:
 
   '@types/geojson@7946.0.16': {}
 
+  '@types/leaflet@1.9.21':
+    dependencies:
+      '@types/geojson': 7946.0.16
+
   '@types/mapbox__mapbox-gl-draw@1.4.9':
     dependencies:
       '@types/geojson': 7946.0.16
@@ -1422,6 +1438,8 @@ snapshots:
   kdbush@4.0.2: {}
 
   kleur@4.1.5: {}
+
+  leaflet@1.9.4: {}
 
   locate-character@3.0.0: {}
 

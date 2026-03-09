@@ -1,5 +1,14 @@
 import type { Feature, FeatureCollection, LineString } from 'geojson';
-import type mapboxgl from 'mapbox-gl';
+
+export interface GridBounds {
+	getWest(): number;
+	getEast(): number;
+	getSouth(): number;
+	getNorth(): number;
+	getCenter(): {
+		lat: number;
+	};
+}
 
 const KM_PER_DEGREE_LAT = 110.574;
 const KM_PER_DEGREE_LNG = 111.32;
@@ -9,7 +18,7 @@ const round = (value: number) => Number(value.toFixed(6));
 const snapDown = (value: number, step: number) => Math.floor(value / step) * step;
 
 export function createKilometerGrid(
-	bounds: mapboxgl.LngLatBounds,
+	bounds: GridBounds,
 	spacingKm: number
 ): FeatureCollection<LineString> {
 	const west = bounds.getWest();
@@ -21,6 +30,12 @@ export function createKilometerGrid(
 
 	const latStep = spacingKm / KM_PER_DEGREE_LAT;
 	const lngStep = spacingKm / (KM_PER_DEGREE_LNG * safeCosine);
+
+	const estimatedLines =
+		Math.ceil((north - south) / latStep) + Math.ceil((east - west) / lngStep) + 4;
+	if (estimatedLines > 2000) {
+		return { type: 'FeatureCollection' as const, features: [] };
+	}
 
 	const features: Array<Feature<LineString>> = [];
 

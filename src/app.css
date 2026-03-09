@@ -74,9 +74,26 @@ button {
 }
 
 .map-canvas,
-.map-placeholder {
+.map-placeholder,
+.map-loading {
   position: absolute;
   inset: 0;
+}
+
+/* Mapbox's default `.mapboxgl-map { position: relative; }` overrides the
+   absolute fill layout we need for this full-frame canvas. Keep this scoped
+   to our map container instead of changing Mapbox defaults globally. */
+.map-frame .map-canvas.mapboxgl-map {
+  position: absolute;
+  inset: 0;
+}
+
+.map-loading {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  pointer-events: none;
 }
 
 .map-placeholder {
@@ -347,6 +364,47 @@ button {
   gap: 0.65rem;
 }
 
+.selection-style-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.selection-color-preview {
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(119, 209, 255, 0.24);
+  background: var(--selection-color);
+  box-shadow: inset 0 0 0 1px rgba(4, 12, 18, 0.5);
+}
+
+.color-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.color-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(119, 209, 255, 0.14);
+  background: var(--swatch-color);
+  box-shadow: inset 0 0 0 1px rgba(4, 12, 18, 0.32);
+}
+
+.color-swatch:hover {
+  border-color: rgba(119, 209, 255, 0.34);
+}
+
+.color-swatch.is-active {
+  border-color: #f5f7fa;
+  box-shadow:
+    0 0 0 1px rgba(245, 247, 250, 0.24),
+    inset 0 0 0 1px rgba(4, 12, 18, 0.32);
+}
+
 .summary-card {
   border: 1px solid rgba(119, 209, 255, 0.14);
   background: rgba(5, 14, 22, 0.92);
@@ -417,7 +475,7 @@ button {
   color: var(--danger);
 }
 
-:global(.mapboxgl-ctrl-group) {
+.mapboxgl-ctrl-group {
   border-radius: 0;
   overflow: hidden;
   border: 1px solid rgba(119, 209, 255, 0.2);
@@ -425,30 +483,98 @@ button {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
 }
 
-:global(.mapboxgl-ctrl-group button) {
+.mapboxgl-ctrl-group button {
   background: transparent;
 }
 
-:global(.mapboxgl-ctrl-group button span) {
+.mapboxgl-ctrl-group button span {
   filter: invert(92%) sepia(8%) saturate(422%) hue-rotate(165deg) brightness(96%) contrast(92%);
 }
 
-:global(.mapboxgl-ctrl-bottom-left),
-:global(.mapboxgl-ctrl-bottom-right),
-:global(.mapboxgl-ctrl-top-left),
-:global(.mapboxgl-ctrl-top-right) {
-  z-index: 2;
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right,
+.mapboxgl-ctrl-top-left,
+.mapboxgl-ctrl-top-right {
+  z-index: 4;
 }
 
-:global(.mapboxgl-popup-content) {
+.mapboxgl-ctrl-top-right,
+.mapboxgl-ctrl-top-left {
+  top: 6.5rem;
+}
+
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right {
+  bottom: 5.5rem;
+}
+
+.mapboxgl-popup-content {
   background: rgba(9, 23, 34, 0.96);
   color: var(--text);
   border: 1px solid rgba(119, 209, 255, 0.18);
   border-radius: 0;
 }
 
-:global(.mapboxgl-popup-tip) {
+.mapboxgl-popup-tip {
   border-top-color: rgba(9, 23, 34, 0.96);
+}
+
+.leaflet-container {
+  background: #0a1824;
+  font-family: var(--font-ui);
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 4;
+}
+
+.leaflet-top {
+  top: 6.5rem;
+}
+
+.leaflet-bottom {
+  bottom: 5.5rem;
+}
+
+.leaflet-control-zoom,
+.leaflet-control-attribution,
+.leaflet-control-scale {
+  border: 1px solid rgba(119, 209, 255, 0.2);
+  background: rgba(7, 17, 26, 0.88);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  background: rgba(7, 17, 26, 0.94);
+  color: var(--text);
+  border-bottom-color: rgba(119, 209, 255, 0.2);
+}
+
+.leaflet-control-attribution,
+.leaflet-control-scale-line {
+  color: var(--text-dim);
+}
+
+.leaflet-control-attribution {
+  padding: 0 0.4rem;
+  font-size: 0.68rem;
+}
+
+.leaflet-control-scale-line {
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+  border-top: 0;
+}
+
+.leaflet-tooltip {
+  border-radius: 0;
+  border: 1px solid rgba(119, 209, 255, 0.18);
+  background: rgba(9, 23, 34, 0.96);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  padding: 0.35rem 0.5rem;
 }
 
 @media (max-width: 1120px) {
@@ -484,5 +610,23 @@ button {
   .briefing-ribbon {
     flex-direction: column;
     width: 100%;
+  }
+
+  .mapboxgl-ctrl-top-right,
+  .mapboxgl-ctrl-top-left {
+    top: 10.5rem;
+  }
+
+  .leaflet-top {
+    top: 10.5rem;
+  }
+
+  .mapboxgl-ctrl-bottom-left,
+  .mapboxgl-ctrl-bottom-right {
+    bottom: 10rem;
+  }
+
+  .leaflet-bottom {
+    bottom: 10rem;
   }
 }

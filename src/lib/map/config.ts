@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/public';
 
-const fallbackStyle = 'mapbox://styles/mapbox/dark-v11';
+const fallbackStyle = 'mapbox://styles/mapbox/satellite-streets-v12';
 
 export const mapboxConfig = {
 	accessToken: env.PUBLIC_MAPBOX_ACCESS_TOKEN ?? '',
