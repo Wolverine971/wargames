@@ -43,10 +43,18 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .workspace-shell {
   display: grid;
   grid-template-columns: minmax(20rem, 25rem) minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .workspace-rail {
@@ -55,6 +63,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 1.25rem;
   background:
     linear-gradient(180deg, rgba(8, 18, 28, 0.98), rgba(6, 14, 22, 0.94)),
@@ -65,12 +77,22 @@ button {
 .workspace-map {
   position: relative;
   min-width: 0;
+  min-height: 0;
 }
 
 .map-frame {
   position: relative;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
+}
+
+.map-frame.is-targeting-map .mapboxgl-canvas,
+.map-frame.is-targeting-map .mapboxgl-canvas-container,
+.map-frame.is-targeting-map .leaflet-container,
+.map-frame.is-targeting-map .leaflet-pane,
+.map-frame.is-targeting-map .leaflet-interactive {
+  cursor: crosshair !important;
 }
 
 .map-canvas,
@@ -78,6 +100,34 @@ button {
 .map-loading {
   position: absolute;
   inset: 0;
+}
+
+.map-canvas {
+  opacity: 0;
+  visibility: hidden;
+  background:
+    linear-gradient(180deg, rgba(3, 12, 20, 0.95), rgba(5, 10, 16, 0.98)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 79px,
+      rgba(119, 209, 255, 0.04) 80px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 79px,
+      rgba(119, 209, 255, 0.04) 80px
+    );
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
+}
+
+.map-canvas.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 220ms ease;
 }
 
 /* Mapbox's default `.mapboxgl-map { position: relative; }` overrides the
@@ -89,7 +139,7 @@ button {
 }
 
 .map-loading {
-  z-index: 1;
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 2rem;
@@ -145,6 +195,7 @@ button {
   pointer-events: none;
   position: absolute;
   inset: 0;
+  z-index: 1090;
 }
 
 .map-crosshair::before,
@@ -170,11 +221,16 @@ button {
   transform: translate(-50%, -50%);
 }
 
+.map-frame.is-targeting-map .map-crosshair::before,
+.map-frame.is-targeting-map .map-crosshair::after {
+  background: rgba(248, 194, 109, 0.55);
+}
+
 .map-overlay {
   pointer-events: none;
   position: absolute;
   inset-inline: 0;
-  z-index: 3;
+  z-index: 1100;
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -188,6 +244,28 @@ button {
 
 .map-overlay-bottom {
   bottom: 0;
+  align-items: flex-end;
+}
+
+.overlay-column {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.overlay-column-wide {
+  flex: 1 1 auto;
+  max-width: 34rem;
+}
+
+.overlay-column-toolbar {
+  max-width: 46rem;
+}
+
+.overlay-column-compact {
+  flex: 0 1 30rem;
   align-items: flex-end;
 }
 
@@ -221,6 +299,10 @@ button {
   flex-direction: column;
   gap: 0.9rem;
   padding: 1rem;
+}
+
+.panel-compact {
+  padding: 0.9rem;
 }
 
 .panel-brand {
@@ -267,7 +349,8 @@ button {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   border: 1px solid rgba(119, 209, 255, 0.18);
   background: rgba(6, 15, 23, 0.92);
   color: var(--text);
@@ -305,7 +388,9 @@ button {
 }
 
 .button,
-.chip-button {
+.chip-button,
+.toolbar-button,
+.toolbar-chip {
   border: 1px solid rgba(119, 209, 255, 0.22);
   background: rgba(10, 25, 37, 0.9);
   color: var(--text);
@@ -317,13 +402,17 @@ button {
 }
 
 .button:hover,
-.chip-button:hover {
+.chip-button:hover,
+.toolbar-button:hover,
+.toolbar-chip:hover {
   border-color: var(--line-strong);
   background: rgba(11, 28, 42, 0.98);
 }
 
 .button.primary,
-.chip-button.is-active {
+.chip-button.is-active,
+.toolbar-button.is-active,
+.toolbar-chip.is-active {
   border-color: rgba(119, 209, 255, 0.5);
   background:
     linear-gradient(135deg, rgba(16, 82, 112, 0.92), rgba(8, 32, 46, 0.95));
@@ -332,6 +421,18 @@ button {
 
 .button.ghost {
   color: var(--warning);
+}
+
+.button.danger {
+  color: var(--danger);
+}
+
+.button-compact {
+  padding: 0.55rem 0.75rem;
+}
+
+.button-row-tight {
+  gap: 0.45rem;
 }
 
 .metric-card,
@@ -411,6 +512,10 @@ button {
   padding: 0.85rem;
 }
 
+.summary-card-static {
+  cursor: default;
+}
+
 .summary-card.is-selected {
   border-color: rgba(119, 209, 255, 0.36);
   background:
@@ -454,6 +559,18 @@ button {
   margin: 0;
 }
 
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.checkbox-row input {
+  margin: 0;
+}
+
 .toggle-row {
   justify-content: space-between;
   align-items: center;
@@ -473,6 +590,95 @@ button {
 
 .flag-danger {
   color: var(--danger);
+}
+
+.workspace-toolbar {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(8, 20, 31, 0.94), rgba(5, 12, 19, 0.9)),
+    linear-gradient(135deg, rgba(119, 209, 255, 0.04), transparent 55%);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  padding: 0.7rem;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.toolbar-group-units {
+  justify-content: flex-end;
+}
+
+.toolbar-button,
+.toolbar-chip {
+  padding: 0.58rem 0.8rem;
+}
+
+.tool-tray {
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(8, 20, 31, 0.95), rgba(5, 12, 19, 0.92)),
+    linear-gradient(135deg, rgba(119, 209, 255, 0.05), transparent 55%);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+  padding: 0.95rem;
+}
+
+.tool-tray-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.tool-tray-description {
+  margin: 0.35rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.tool-tray-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+
+.rail-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.status-card-inline {
+  padding: 0.8rem 0.9rem;
+}
+
+.map-inspector {
+  position: absolute;
+  top: 7.25rem;
+  right: 1.25rem;
+  z-index: 1110;
+  width: min(22rem, calc(100% - 2.5rem));
+  pointer-events: auto;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
 }
 
 .mapboxgl-ctrl-group {
@@ -500,7 +706,11 @@ button {
 
 .mapboxgl-ctrl-top-right,
 .mapboxgl-ctrl-top-left {
-  top: 6.5rem;
+  top: 12rem;
+}
+
+.mapboxgl-ctrl-top-left .mapboxgl-ctrl:empty {
+  display: none;
 }
 
 .mapboxgl-ctrl-bottom-left,
@@ -530,7 +740,7 @@ button {
 }
 
 .leaflet-top {
-  top: 6.5rem;
+  top: 12rem;
 }
 
 .leaflet-bottom {
@@ -580,14 +790,24 @@ button {
 @media (max-width: 1120px) {
   .workspace-shell {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
   }
 
   .workspace-rail {
+    min-height: auto;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
+  .workspace-map {
+    min-height: 72vh;
+  }
+
   .map-frame {
+    height: 72vh;
     min-height: 72vh;
   }
 }
@@ -598,9 +818,14 @@ button {
     padding: 0.85rem;
   }
 
+  .map-overlay-top {
+    flex-direction: column;
+  }
+
   .field-group.two-col,
   .status-grid,
-  .metrics-grid {
+  .metrics-grid,
+  .inspector-grid {
     grid-template-columns: 1fr;
   }
 
@@ -612,13 +837,23 @@ button {
     width: 100%;
   }
 
+  .overlay-column-wide,
+  .overlay-column-compact {
+    max-width: none;
+    width: 100%;
+  }
+
+  .overlay-column-compact {
+    align-items: stretch;
+  }
+
   .mapboxgl-ctrl-top-right,
   .mapboxgl-ctrl-top-left {
-    top: 10.5rem;
+    top: 19.5rem;
   }
 
   .leaflet-top {
-    top: 10.5rem;
+    top: 19.5rem;
   }
 
   .mapboxgl-ctrl-bottom-left,
@@ -628,5 +863,23 @@ button {
 
   .leaflet-bottom {
     bottom: 10rem;
+  }
+
+  .workspace-toolbar {
+    align-items: stretch;
+  }
+
+  .toolbar-group,
+  .toolbar-group-units {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .map-inspector {
+    position: absolute;
+    top: auto;
+    right: 0.85rem;
+    bottom: 11rem;
+    width: min(22rem, calc(100% - 1.7rem));
   }
 }
