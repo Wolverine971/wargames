@@ -522,6 +522,11 @@ button:disabled {
     linear-gradient(135deg, rgba(18, 66, 90, 0.4), rgba(5, 14, 22, 0.96));
 }
 
+.summary-card .field,
+.summary-card .field-group {
+  margin-top: 0.7rem;
+}
+
 .summary-head {
   display: flex;
   justify-content: space-between;

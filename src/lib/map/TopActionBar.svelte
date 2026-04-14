@@ -5,6 +5,7 @@
 
 	export let activeTool: ActiveTool = 'select';
 	export let unitMode: UnitMode = 'metric';
+	export let authoringEnabled = true;
 	export let drawCapable = true;
 	export let searchEnabled = true;
 
@@ -16,15 +17,16 @@
 	const tools: Array<{
 		id: ActiveTool;
 		label: string;
+		requiresAuthoring?: boolean;
 		requiresDraw?: boolean;
 		requiresSearch?: boolean;
 	}> = [
 		{ id: 'select', label: 'Select' },
-		{ id: 'point', label: 'Point' },
+		{ id: 'point', label: 'Point', requiresAuthoring: true },
 		{ id: 'group', label: 'Group' },
-		{ id: 'ring', label: 'Ring' },
-		{ id: 'route', label: 'Route', requiresDraw: true },
-		{ id: 'area', label: 'Area', requiresDraw: true },
+		{ id: 'ring', label: 'Ring', requiresAuthoring: true },
+		{ id: 'route', label: 'Route', requiresAuthoring: true, requiresDraw: true },
+		{ id: 'area', label: 'Area', requiresAuthoring: true, requiresDraw: true },
 		{ id: 'search', label: 'Search', requiresSearch: true }
 	];
 </script>
@@ -36,7 +38,9 @@
 				aria-pressed={activeTool === tool.id}
 				class:is-active={activeTool === tool.id}
 				class="toolbar-button"
-				disabled={(tool.requiresDraw && !drawCapable) || (tool.requiresSearch && !searchEnabled)}
+				disabled={(tool.requiresAuthoring && !authoringEnabled) ||
+					(tool.requiresDraw && !drawCapable) ||
+					(tool.requiresSearch && !searchEnabled)}
 				type="button"
 				on:click={() => dispatch('toolselect', { tool: tool.id })}
 			>

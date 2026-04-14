@@ -11,6 +11,8 @@
 	export let groups: ScenarioGroup[] = [];
 	export let selectedColor = '#77d1ff';
 	export let canEditColor = false;
+	export let canEditSelection = true;
+	export let lockedReason = '';
 	export let unitMode: UnitMode = 'metric';
 
 	const dispatch = createEventDispatcher<{
@@ -87,9 +89,14 @@
 		<section class="panel panel-compact">
 			<div class="panel-header">Selection</div>
 
+			{#if !canEditSelection && lockedReason}
+				<p class="hint-text flag-warning">{lockedReason}</p>
+			{/if}
+
 			<div class="field">
 				<div class="field-label">Label</div>
 				<input
+					disabled={!canEditSelection}
 					value={label}
 					on:input={(event) =>
 						dispatch('labelchange', {
@@ -102,18 +109,19 @@
 				<div class="field-group two-col">
 					<div class="field">
 						<div class="field-label">Latitude</div>
-						<input bind:value={pointLatInput} inputmode="decimal" />
+						<input bind:value={pointLatInput} disabled={!canEditSelection} inputmode="decimal" />
 					</div>
 
 					<div class="field">
 						<div class="field-label">Longitude</div>
-						<input bind:value={pointLngInput} inputmode="decimal" />
+						<input bind:value={pointLngInput} disabled={!canEditSelection} inputmode="decimal" />
 					</div>
 				</div>
 
 				<div class="button-row">
 					<button
 						class="button"
+						disabled={!canEditSelection}
 						type="button"
 						on:click={() =>
 							dispatch('coordinateapply', {
@@ -123,7 +131,12 @@
 					>
 						Apply coordinates
 					</button>
-					<button class="button ghost" type="button" on:click={() => dispatch('requestmove', null)}>
+					<button
+						class="button ghost"
+						disabled={!canEditSelection}
+						type="button"
+						on:click={() => dispatch('requestmove', null)}
+					>
 						Reposition on map
 					</button>
 				</div>
@@ -133,12 +146,12 @@
 				<div class="field-group two-col">
 					<div class="field">
 						<div class="field-label">{ringInputMode === 'radius' ? 'Radius' : 'Diameter'}</div>
-						<input bind:value={ringDistanceValue} inputmode="decimal" />
+						<input bind:value={ringDistanceValue} disabled={!canEditSelection} inputmode="decimal" />
 					</div>
 
 					<div class="field">
 						<div class="field-label">Unit</div>
-						<select bind:value={ringDistanceUnit}>
+						<select bind:value={ringDistanceUnit} disabled={!canEditSelection}>
 							<option value="m">Meters</option>
 							<option value="km">Kilometers</option>
 							<option value="mi">Miles</option>
@@ -151,6 +164,7 @@
 					<button
 						class:is-active={ringInputMode === 'radius'}
 						class="chip-button"
+						disabled={!canEditSelection}
 						type="button"
 						on:click={() => (ringInputMode = 'radius')}
 					>
@@ -159,6 +173,7 @@
 					<button
 						class:is-active={ringInputMode === 'diameter'}
 						class="chip-button"
+						disabled={!canEditSelection}
 						type="button"
 						on:click={() => (ringInputMode = 'diameter')}
 					>
@@ -169,6 +184,7 @@
 				<div class="button-row">
 					<button
 						class="button"
+						disabled={!canEditSelection}
 						type="button"
 						on:click={() =>
 							dispatch('ringapply', {
@@ -199,6 +215,7 @@
 			<div class="field">
 				<div class="field-label">Layer</div>
 				<select
+					disabled={!canEditSelection}
 					value={selectedLayerId}
 					on:change={(event) =>
 						dispatch('layerchange', {
@@ -214,6 +231,7 @@
 			<div class="field">
 				<div class="field-label">Group</div>
 				<select
+					disabled={!canEditSelection}
 					value={selectedGroupId}
 					on:change={(event) => {
 						const nextValue = (event.currentTarget as HTMLSelectElement).value;
@@ -233,6 +251,7 @@
 				<div class="field">
 					<div class="field-label">Color</div>
 					<input
+						disabled={!canEditSelection}
 						type="color"
 						value={selectedColor}
 						on:input={(event) =>
@@ -244,7 +263,12 @@
 			{/if}
 
 			<div class="button-row">
-				<button class="button danger" type="button" on:click={() => dispatch('delete', null)}>
+				<button
+					class="button danger"
+					disabled={!canEditSelection}
+					type="button"
+					on:click={() => dispatch('delete', null)}
+				>
 					Delete selected
 				</button>
 			</div>

@@ -34,14 +34,17 @@
 	import LocationSearch from '$lib/map/LocationSearch.svelte';
 	import { mapboxConfig, mapboxEnabled } from '$lib/map/config';
 	import type { LocationSearchSuggestion } from '$lib/map/locationSearch';
-	import { supabaseEnabled } from '$lib/supabase/config';
-	import { getBrowserSupabase } from '$lib/supabase/client';
 	import TopActionBar from '$lib/map/TopActionBar.svelte';
 	import ToolTray from '$lib/map/ToolTray.svelte';
 	import RightInspector from '$lib/map/RightInspector.svelte';
 	import { createRingFeature } from '$lib/map/rings';
 	import { clearDraftState, readDraftState, writeDraftState } from '$lib/map/draftRepository';
-	import { formatArea, formatDistance, metersFromUnit } from '$lib/map/units';
+	import {
+		formatArea,
+		formatDistance,
+		metersFromUnit,
+		type DistanceUnit
+	} from '$lib/map/units';
 	import type {
 		ActiveTool,
 		DraftState,
@@ -92,6 +95,7 @@
 	let rasterGridLayer: LeafletGeoJSON | null = null;
 	let rasterFeatureLayer: LeafletGeoJSON | null = null;
 	let localFeatureCollection: FeatureCollection<Geometry> = emptyFeatureCollection();
+	let lastCommittedFeatureCollection: FeatureCollection<Geometry> = emptyFeatureCollection();
 
 	const defaultLayer = createScenarioLayer('Operational Objects', DEFAULT_LAYER_COLOR);
 
@@ -115,7 +119,7 @@
 
 	let ringLabel = '';
 	let ringDistanceValue = 10;
-	let ringDistanceUnit: 'm' | 'km' | 'mi' | 'nm' = 'km';
+	let ringDistanceUnit: DistanceUnit = 'km';
 	let ringInputMode: 'radius' | 'diameter' = 'radius';
 	let ringRepeatMode = false;
 
@@ -147,24 +151,28 @@
 	let mapError: string | null = null;
 	let mapSurfaceVisible = !mapboxEnabled;
 
+	$: orderedLayers = getOrderedLayers();
 	$: selectionCount = selectedFeatureIds.length;
 	$: selectedSummary =
 		featureSummaries.find((feature) => feature.id === selectedFeatureId) ?? null;
-	$: pointCount = featureSummaries.filter((item) => item.kind === 'Point').length;
-	$: routeCount = featureSummaries.filter((item) => item.kind === 'Route').length;
-	$: ringCount = featureSummaries.filter((item) => item.kind === 'Ring').length;
-	$: areaCount = featureSummaries.filter((item) => item.kind === 'Area').length;
-	$: totalDistanceMeters = featureSummaries.reduce(
+	$: visibleFeatureSummaries = featureSummaries.filter((summary) =>
+		isFeatureSummaryVisible(summary.id)
+	);
+	$: hiddenFeatureCount = featureSummaries.length - visibleFeatureSummaries.length;
+	$: pointCount = visibleFeatureSummaries.filter((item) => item.kind === 'Point').length;
+	$: routeCount = visibleFeatureSummaries.filter((item) => item.kind === 'Route').length;
+	$: ringCount = visibleFeatureSummaries.filter((item) => item.kind === 'Ring').length;
+	$: areaCount = visibleFeatureSummaries.filter((item) => item.kind === 'Area').length;
+	$: totalDistanceMeters = visibleFeatureSummaries.reduce(
 		(total, item) => total + item.distanceMeters,
 		0
 	);
-	$: totalAreaSqMeters = featureSummaries.reduce(
+	$: totalAreaSqMeters = visibleFeatureSummaries.reduce(
 		(total, item) => total + item.areaSqMeters,
 		0
 	);
 	$: cursorMgrs = formatMgrs(cursorLng, cursorLat);
-	$: dataModeLabel = supabaseEnabled ? 'Supabase-ready workspace' : 'Browser draft mode';
-	$: canPlotOnMap = Boolean(map || rasterMap);
+	$: dataModeLabel = 'Browser draft workspace';
 	$: drawCapable = mapState === 'ready';
 	$: locationSearchEnabled = mapboxEnabled && (mapState === 'ready' || mapState === 'fallback');
 	$: locationSearchDisabledReason = !mapboxEnabled
@@ -188,8 +196,26 @@
 		layers.find((layer) => layer.id === activeLayerId) ??
 		layers[0] ??
 		createScenarioLayer('Operational Objects', DEFAULT_LAYER_COLOR);
+	$: activeLayerEditable = Boolean(activeLayer?.isVisible && !activeLayer?.isLocked);
+	$: activeLayerStatus = activeLayer.isLocked
+		? 'Locked'
+		: activeLayer.isVisible
+			? 'Visible'
+			: 'Hidden';
+	$: authoringDisabledReason = activeLayer.isLocked
+		? 'Unlock the active layer before adding map objects.'
+		: !activeLayer.isVisible
+			? 'Show the active layer before adding map objects.'
+			: '';
 	$: selectedFeatureColor = selectedFeature ? getFeatureColor(selectedFeature) : DEFAULT_LAYER_COLOR;
-	$: canEditSelectedColor = Boolean(selectedFeature);
+	$: selectedFeatureLockedReason = selectedFeature ? getFeatureLockReason(selectedFeature) : '';
+	$: selectedFeatureCanEdit = Boolean(selectedFeature && !selectedFeatureLockedReason);
+	$: selectionEditableFeatureIds = selectedFeatureIds.filter((featureId) => {
+		const feature = getFeatureById(featureId);
+		return Boolean(feature && isFeatureEditable(feature));
+	});
+	$: selectionHasLockedFeatures = selectionEditableFeatureIds.length < selectedFeatureIds.length;
+	$: canEditSelectedColor = selectedFeatureCanEdit;
 	$: selectedPointCoordinates =
 		selectedFeature?.geometry.type === 'Point'
 			? (selectedFeature.geometry.coordinates as [number, number])
@@ -205,10 +231,10 @@
 			filter: [
 				'all',
 				['==', '$type', 'Polygon'],
-				['!=', ['get', 'renderVisible'], false]
+				['!=', 'user_renderVisible', false]
 			],
 			paint: {
-				'fill-color': ['coalesce', ['get', 'userColor'], DEFAULT_LAYER_COLOR],
+				'fill-color': ['coalesce', ['get', 'user_userColor'], DEFAULT_LAYER_COLOR],
 				'fill-opacity': [
 					'case',
 					['==', ['get', 'active'], 'true'],
@@ -223,14 +249,14 @@
 			filter: [
 				'all',
 				['==', '$type', 'Polygon'],
-				['!=', ['get', 'renderVisible'], false]
+				['!=', 'user_renderVisible', false]
 			],
 			layout: {
 				'line-cap': 'round',
 				'line-join': 'round'
 			},
 			paint: {
-				'line-color': ['coalesce', ['get', 'userColor'], DEFAULT_LAYER_COLOR],
+				'line-color': ['coalesce', ['get', 'user_userColor'], DEFAULT_LAYER_COLOR],
 				'line-dasharray': [
 					'case',
 					['==', ['get', 'active'], 'true'],
@@ -246,14 +272,14 @@
 			filter: [
 				'all',
 				['==', '$type', 'LineString'],
-				['!=', ['get', 'renderVisible'], false]
+				['!=', 'user_renderVisible', false]
 			],
 			layout: {
 				'line-cap': 'round',
 				'line-join': 'round'
 			},
 			paint: {
-				'line-color': ['coalesce', ['get', 'userColor'], DEFAULT_LAYER_COLOR],
+				'line-color': ['coalesce', ['get', 'user_userColor'], DEFAULT_LAYER_COLOR],
 				'line-dasharray': [
 					'case',
 					['==', ['get', 'active'], 'true'],
@@ -270,7 +296,7 @@
 				'all',
 				['==', '$type', 'Point'],
 				['==', 'meta', 'feature'],
-				['!=', ['get', 'renderVisible'], false]
+				['!=', 'user_renderVisible', false]
 			],
 			paint: {
 				'circle-radius': ['case', ['==', ['get', 'active'], 'true'], 7, 5],
@@ -284,11 +310,11 @@
 				'all',
 				['==', '$type', 'Point'],
 				['==', 'meta', 'feature'],
-				['!=', ['get', 'renderVisible'], false]
+				['!=', 'user_renderVisible', false]
 			],
 			paint: {
 				'circle-radius': ['case', ['==', ['get', 'active'], 'true'], 5, 3],
-				'circle-color': ['coalesce', ['get', 'userColor'], DEFAULT_LAYER_COLOR]
+				'circle-color': ['coalesce', ['get', 'user_userColor'], DEFAULT_LAYER_COLOR]
 			}
 		},
 		{
@@ -322,7 +348,7 @@
 		{
 			id: 'gl-draw-midpoint',
 			type: 'circle',
-			filter: [['all', ['==', 'meta', 'midpoint']]],
+			filter: ['all', ['==', 'meta', 'midpoint']],
 			paint: {
 				'circle-radius': 3,
 				'circle-color': DEFAULT_ACCENT_COLOR
@@ -364,6 +390,23 @@
 			isVisible: true,
 			isLocked: false
 		};
+	}
+
+	function cloneFeatureCollection(
+		collection: FeatureCollection<Geometry>
+	): FeatureCollection<Geometry> {
+		return JSON.parse(JSON.stringify(collection)) as FeatureCollection<Geometry>;
+	}
+
+	function getOrderedLayers(nextLayers = layers) {
+		return [...nextLayers].sort((left, right) => left.sortOrder - right.sortOrder);
+	}
+
+	function normalizeLayerSortOrders(nextLayers: ScenarioLayer[]) {
+		return getOrderedLayers(nextLayers).map((layer, index) => ({
+			...layer,
+			sortOrder: index
+		}));
 	}
 
 	function normalizeHexColor(value: string) {
@@ -416,6 +459,15 @@
 		return groups.find((group) => group.id === groupId) ?? null;
 	}
 
+	function getFeatureById(featureId: string) {
+		const collection = getCurrentFeatureCollection() as FeatureCollection<
+			Point | LineString | Polygon
+		>;
+		return (
+			collection.features.find((feature) => String(feature.id ?? '') === featureId) ?? null
+		);
+	}
+
 	function isFeatureVisibleByIds(layerId: string | null | undefined, groupId: string | null | undefined) {
 		const layer = getLayer(layerId);
 		if (!layer.isVisible) {
@@ -429,6 +481,65 @@
 	function isFeatureVisible(feature: Feature<Point | LineString | Polygon>) {
 		const properties = getFeatureProperties(feature);
 		return isFeatureVisibleByIds(properties.layerId, properties.groupId);
+	}
+
+	function isFeatureSummaryVisible(featureId: string) {
+		const feature = getFeatureById(featureId);
+		return feature ? isFeatureVisible(feature) : false;
+	}
+
+	function getFeatureLockReason(feature: Feature<Point | LineString | Polygon>) {
+		const properties = getFeatureProperties(feature);
+		const layer = getLayer(properties.layerId);
+		if (layer.isLocked) {
+			return `Layer "${layer.name}" is locked.`;
+		}
+
+		const group = getGroup(properties.groupId);
+		if (group?.isLocked) {
+			return `Group "${group.name}" is locked.`;
+		}
+
+		return '';
+	}
+
+	function isFeatureEditable(feature: Feature<Point | LineString | Polygon>) {
+		return getFeatureLockReason(feature).length === 0;
+	}
+
+	function getFeatureLayerName(featureId: string) {
+		const feature = getFeatureById(featureId);
+		if (!feature) {
+			return 'Unknown layer';
+		}
+
+		return getLayer(getFeatureProperties(feature).layerId).name;
+	}
+
+	function getFeatureGroupName(featureId: string) {
+		const feature = getFeatureById(featureId);
+		if (!feature) {
+			return '';
+		}
+
+		const group = getGroup(getFeatureProperties(feature).groupId);
+		return group?.name ?? '';
+	}
+
+	function getFeatureCountForLayer(layerId: string) {
+		const collection = getCurrentFeatureCollection();
+		return collection.features.filter((feature) => {
+			const properties = getFeatureProperties(feature as Feature<Point | LineString | Polygon>);
+			return (properties.layerId ?? activeLayerId) === layerId;
+		}).length;
+	}
+
+	function getFeatureCountForGroup(groupId: string) {
+		const collection = getCurrentFeatureCollection();
+		return collection.features.filter((feature) => {
+			const properties = getFeatureProperties(feature as Feature<Point | LineString | Polygon>);
+			return properties.groupId === groupId;
+		}).length;
 	}
 
 	function getFeatureColor(feature: Feature<Point | LineString | Polygon>) {
@@ -682,11 +793,11 @@
 
 	function normalizeLayers(nextLayers: ScenarioLayer[] | undefined) {
 		if (Array.isArray(nextLayers) && nextLayers.length > 0) {
-			return nextLayers.map((layer, index) => ({
+			return normalizeLayerSortOrders(nextLayers.map((layer, index) => ({
 				...layer,
 				color: normalizeHexColor(layer.color),
 				sortOrder: layer.sortOrder ?? index
-			}));
+			})));
 		}
 
 		return [createScenarioLayer('Operational Objects', DEFAULT_LAYER_COLOR)];
@@ -941,12 +1052,20 @@
 		);
 
 		const availableIds = new Set(featureSummaries.map((feature) => feature.id));
-		selectedFeatureIds = selectedFeatureIds.filter((featureId) => availableIds.has(featureId));
+		const visibleIds = new Set(
+			collection.features
+				.filter((feature) => isFeatureVisible(feature))
+				.map((feature) => String(feature.id ?? ''))
+		);
+		selectedFeatureIds = selectedFeatureIds.filter(
+			(featureId) => availableIds.has(featureId) && visibleIds.has(featureId)
+		);
 		if (selectedFeatureIds.length === 0 && selectedFeatureId && availableIds.has(selectedFeatureId)) {
-			selectedFeatureIds = [selectedFeatureId];
+			selectedFeatureIds = visibleIds.has(selectedFeatureId) ? [selectedFeatureId] : [];
 		}
 		selectedFeatureId = selectedFeatureIds[0] ?? null;
 		refreshSelectedFeature(collection);
+		lastCommittedFeatureCollection = cloneFeatureCollection(collection);
 
 		if (rasterMap) {
 			renderFallbackFeatures();
@@ -1035,7 +1154,12 @@
 			| Partial<MapFeatureProperties>
 			| ((feature: Feature<Point | LineString | Polygon>) => Partial<MapFeatureProperties>)
 	) {
-		if (featureIds.length === 0) {
+		const editableFeatureIds = featureIds.filter((featureId) => {
+			const feature = getFeatureById(featureId);
+			return Boolean(feature && isFeatureEditable(feature));
+		});
+
+		if (editableFeatureIds.length === 0) {
 			return;
 		}
 
@@ -1043,7 +1167,7 @@
 			const collection = draw.getAll() as FeatureCollection<Point | LineString | Polygon>;
 			for (const feature of collection.features) {
 				const featureId = String(feature.id ?? '');
-				if (!featureIds.includes(featureId)) {
+				if (!editableFeatureIds.includes(featureId)) {
 					continue;
 				}
 
@@ -1053,10 +1177,89 @@
 				}
 			}
 		} else {
-			patchLocalFeatures(featureIds, patch);
+			patchLocalFeatures(editableFeatureIds, patch);
 		}
 
 		applyFeaturePresentationState();
+	}
+
+	function getCommittedFeature(featureId: string) {
+		return (
+			lastCommittedFeatureCollection.features.find(
+				(feature) => String(feature.id ?? '') === featureId
+			) ?? null
+		);
+	}
+
+	function restoreLockedUpdatedFeatures(
+		features: Array<Feature<Point | LineString | Polygon>>
+	) {
+		if (!draw) {
+			return false;
+		}
+
+		const restoredFeatureIds: string[] = [];
+		for (const feature of features) {
+			const featureId = String(feature.id ?? '');
+			if (!featureId || isFeatureEditable(feature)) {
+				continue;
+			}
+
+			const committedFeature = getCommittedFeature(featureId);
+			if (!committedFeature) {
+				continue;
+			}
+
+			draw.delete(featureId);
+			draw.add(
+				decorateFeature(committedFeature as Feature<Point | LineString | Polygon>)
+			);
+			restoredFeatureIds.push(featureId);
+		}
+
+		if (restoredFeatureIds.length === 0) {
+			return false;
+		}
+
+		draw.changeMode('simple_select', {
+			featureIds: restoredFeatureIds
+		});
+		setSelectedFeatureIds(restoredFeatureIds);
+		syncFeatureState();
+		return true;
+	}
+
+	function restoreDeletedLockedFeatures(
+		features: Array<Feature<Point | LineString | Polygon>>
+	) {
+		if (!draw) {
+			return false;
+		}
+
+		const restoredFeatureIds: string[] = [];
+		for (const feature of features) {
+			const featureId = String(feature.id ?? '');
+			if (!featureId || isFeatureEditable(feature)) {
+				continue;
+			}
+
+			const committedFeature = getCommittedFeature(featureId) ?? feature;
+			draw.add(
+				decorateFeature(committedFeature as Feature<Point | LineString | Polygon>)
+			);
+			restoredFeatureIds.push(featureId);
+		}
+
+		if (restoredFeatureIds.length === 0) {
+			return false;
+		}
+
+		draw.changeMode('simple_select', {
+			featureIds: restoredFeatureIds
+		});
+		setSelectedFeatureIds(restoredFeatureIds);
+		syncFeatureState();
+		return true;
 	}
 
 	function getRingCenter(feature: Feature<Point | LineString | Polygon>) {
@@ -1093,23 +1296,27 @@
 	}
 
 	function deleteSelectedFeatures() {
-		const nextSelectedIds = [...selectedFeatureIds];
-		if (nextSelectedIds.length === 0) {
+		const deletableFeatureIds = selectionEditableFeatureIds;
+		const lockedFeatureIds = selectedFeatureIds.filter(
+			(featureId) => !deletableFeatureIds.includes(featureId)
+		);
+
+		if (deletableFeatureIds.length === 0) {
 			return;
 		}
 
 		if (draw) {
-			draw.delete(nextSelectedIds);
+			draw.delete(deletableFeatureIds);
 		} else {
 			localFeatureCollection = {
 				type: 'FeatureCollection',
 				features: localFeatureCollection.features.filter(
-					(feature) => !nextSelectedIds.includes(String(feature.id ?? ''))
+					(feature) => !deletableFeatureIds.includes(String(feature.id ?? ''))
 				)
 			};
 		}
 
-		setSelectedFeatureIds([]);
+		setSelectedFeatureIds(lockedFeatureIds);
 		syncFeatureState();
 	}
 
@@ -1158,6 +1365,10 @@
 	}
 
 	function addFeature(feature: Feature<Point | LineString | Polygon>) {
+		if (!activeLayerEditable) {
+			return false;
+		}
+
 		const decoratedFeature = decorateFeature(feature);
 		if (draw) {
 			draw.add(decoratedFeature);
@@ -1170,6 +1381,7 @@
 
 		setSelectedFeatureIds([String(decoratedFeature.id ?? '')]);
 		applyFeaturePresentationState();
+		return true;
 	}
 
 	function addPointFeature(point: [number, number], label: string) {
@@ -1188,7 +1400,9 @@
 			}
 		};
 
-		addFeature(pointFeature);
+		if (!addFeature(pointFeature)) {
+			return;
+		}
 		flyToPoint(point);
 
 		pointLabel = '';
@@ -1220,7 +1434,9 @@
 			}
 		);
 
-		addFeature(ringFeature);
+		if (!addFeature(ringFeature)) {
+			return;
+		}
 		if (!ringRepeatMode) {
 			setActiveTool('select');
 		}
@@ -1278,7 +1494,7 @@
 		flyToPoint(point);
 	}
 
-	function updateSelectedRing(distanceValue: number, distanceUnit: 'm' | 'km' | 'mi' | 'nm', mode: 'radius' | 'diameter') {
+	function updateSelectedRing(distanceValue: number, distanceUnit: DistanceUnit, mode: 'radius' | 'diameter') {
 		if (!selectedFeatureId || !selectedFeature) {
 			return;
 		}
@@ -1312,7 +1528,17 @@
 		);
 	}
 
+	function isAuthoringTool(tool: ActiveTool) {
+		return tool === 'point' || tool === 'ring' || tool === 'route' || tool === 'area';
+	}
+
 	function setActiveTool(nextTool: ActiveTool) {
+		if (isAuthoringTool(nextTool) && !activeLayerEditable) {
+			activeTool = 'select';
+			draw?.changeMode('simple_select');
+			return;
+		}
+
 		activeTool = nextTool;
 
 		if (draw) {
@@ -1383,17 +1609,70 @@
 			...createScenarioLayer(name, normalizeHexColor(newLayerColor)),
 			sortOrder: layers.length
 		};
-		layers = [...layers, nextLayer];
+		layers = normalizeLayerSortOrders([...layers, nextLayer]);
 		activeLayerId = nextLayer.id;
 		newLayerName = '';
 		newLayerColor = DEFAULT_LAYER_COLOR;
 		applyFeaturePresentationState();
 	}
 
+	function updateLayerName(layerId: string, name: string) {
+		const trimmedName = name.trim();
+		layers = layers.map((layer) =>
+			layer.id === layerId
+				? {
+						...layer,
+						name: trimmedName.length > 0 ? trimmedName : layer.name
+					}
+				: layer
+		);
+		persistDraft();
+	}
+
+	function updateLayerColor(layerId: string, color: string) {
+		layers = layers.map((layer) =>
+			layer.id === layerId ? { ...layer, color: normalizeHexColor(color) } : layer
+		);
+		applyFeaturePresentationState();
+	}
+
+	function moveLayer(layerId: string, direction: -1 | 1) {
+		const nextLayers = getOrderedLayers();
+		const currentIndex = nextLayers.findIndex((layer) => layer.id === layerId);
+		const nextIndex = currentIndex + direction;
+		if (currentIndex < 0 || nextIndex < 0 || nextIndex >= nextLayers.length) {
+			return;
+		}
+
+		const [layer] = nextLayers.splice(currentIndex, 1);
+		nextLayers.splice(nextIndex, 0, layer);
+		layers = normalizeLayerSortOrders(nextLayers);
+		persistDraft();
+	}
+
+	function ensureActiveLayerCanReceiveFeatures() {
+		const currentLayer = layers.find((layer) => layer.id === activeLayerId);
+		if (currentLayer?.isVisible && !currentLayer.isLocked) {
+			return;
+		}
+
+		const nextEditableLayer = getOrderedLayers().find(
+			(layer) => layer.isVisible && !layer.isLocked
+		);
+		if (nextEditableLayer) {
+			activeLayerId = nextEditableLayer.id;
+		}
+
+		if (activeTool === 'point' || activeTool === 'ring' || activeTool === 'route' || activeTool === 'area') {
+			setActiveTool('select');
+		}
+	}
+
 	function toggleLayerVisibility(layerId: string) {
 		layers = layers.map((layer) =>
 			layer.id === layerId ? { ...layer, isVisible: !layer.isVisible } : layer
 		);
+		ensureActiveLayerCanReceiveFeatures();
 		applyFeaturePresentationState();
 	}
 
@@ -1401,10 +1680,16 @@
 		layers = layers.map((layer) =>
 			layer.id === layerId ? { ...layer, isLocked: !layer.isLocked } : layer
 		);
+		ensureActiveLayerCanReceiveFeatures();
 		persistDraft();
 	}
 
 	function setActiveLayer(layerId: string) {
+		const nextLayer = layers.find((layer) => layer.id === layerId);
+		if (!nextLayer || !nextLayer.isVisible || nextLayer.isLocked) {
+			return;
+		}
+
 		activeLayerId = layerId;
 		persistDraft();
 	}
@@ -1421,6 +1706,33 @@
 		newGroupDescription = '';
 		persistDraft();
 		return nextGroup;
+	}
+
+	function updateGroupName(groupId: string, name: string) {
+		const trimmedName = name.trim();
+		groups = groups.map((group) =>
+			group.id === groupId
+				? {
+						...group,
+						name: trimmedName.length > 0 ? trimmedName : group.name
+					}
+				: group
+		);
+		persistDraft();
+	}
+
+	function updateGroupDescription(groupId: string, description: string) {
+		groups = groups.map((group) =>
+			group.id === groupId ? { ...group, description } : group
+		);
+		persistDraft();
+	}
+
+	function updateGroupColor(groupId: string, color: string) {
+		groups = groups.map((group) =>
+			group.id === groupId ? { ...group, color: normalizeHexColor(color) } : group
+		);
+		persistDraft();
 	}
 
 	function createGroupFromSelection() {
@@ -1481,6 +1793,7 @@
 	function resetDraft() {
 		draw?.deleteAll();
 		localFeatureCollection = emptyFeatureCollection();
+		lastCommittedFeatureCollection = emptyFeatureCollection();
 		map?.flyTo(defaultView);
 		rasterMap?.flyTo([defaultView.center[1], defaultView.center[0]], defaultView.zoom, {
 			duration: 0.75
@@ -1570,10 +1883,9 @@
 					pendingPointMoveFeatureId = null;
 					setActiveTool('select');
 				}
-			};
+		};
 
 		window.addEventListener('keydown', handleKeydown);
-		getBrowserSupabase();
 
 		if (storedDraft) {
 			applyDraftState(storedDraft, { restoreView: false });
@@ -1743,6 +2055,7 @@
 						displayControlsDefault: false,
 						controls: {},
 						defaultMode: 'simple_select',
+						userProperties: true,
 						styles: mapboxDrawStyles
 					});
 
@@ -1763,6 +2076,15 @@
 								features: Array<Feature<Point | LineString | Polygon>>;
 							}
 						).features;
+
+						if (!activeLayerEditable) {
+							draw?.delete(
+								createdFeatures.map((feature) => String(feature.id ?? '')).filter(Boolean)
+							);
+							setActiveTool('select');
+							syncFeatureState(false);
+							return;
+						}
 
 						for (const feature of createdFeatures) {
 							if (!feature.id) {
@@ -1794,8 +2116,24 @@
 						}
 						syncFeatureState();
 					});
-					nextMap.on('draw.update', () => syncFeatureState());
-					nextMap.on('draw.delete', () => {
+					nextMap.on('draw.update', (event) => {
+						const updatedFeatures = (
+							event as { features: Array<Feature<Point | LineString | Polygon>> }
+						).features;
+						if (restoreLockedUpdatedFeatures(updatedFeatures)) {
+							return;
+						}
+
+						syncFeatureState();
+					});
+					nextMap.on('draw.delete', (event) => {
+						const deletedFeatures = (
+							event as { features: Array<Feature<Point | LineString | Polygon>> }
+						).features;
+						if (restoreDeletedLockedFeatures(deletedFeatures)) {
+							return;
+						}
+
 						setSelectedFeatureIds([]);
 						syncFeatureState();
 					});
@@ -1904,7 +2242,9 @@
 					<div class="data-label">Save Mode</div>
 					<span class="status-value">{dataModeLabel}</span>
 					<div class="status-meta">
-						{lastSavedAt ? `Last draft save ${lastSavedAt}` : 'Draft not saved yet.'}
+						{lastSavedAt
+							? `Last local draft save ${lastSavedAt}`
+							: 'Local draft not saved yet.'}
 					</div>
 				</div>
 			</div>
@@ -1993,21 +2333,65 @@
 				</div>
 
 				<div class="summary-list">
-					{#each layers as layer}
+					{#each orderedLayers as layer, index}
 						<div class:is-selected={activeLayerId === layer.id} class="summary-card summary-card-static">
 							<div class="summary-head">
 								<div class="summary-title">{layer.name}</div>
-								<div class="summary-kind">{layer.isVisible ? 'Visible' : 'Hidden'}</div>
+								<div class="summary-kind">
+									{layer.isLocked ? 'Locked' : layer.isVisible ? 'Visible' : 'Hidden'}
+								</div>
 							</div>
-							<div class="summary-detail">Color {layer.color}</div>
+							<div class="summary-detail">
+								{getFeatureCountForLayer(layer.id)} object{getFeatureCountForLayer(layer.id) === 1 ? '' : 's'}
+								· Order {index + 1}
+							</div>
+
+							<div class="field-group two-col">
+								<div class="field">
+									<div class="field-label">Layer Name</div>
+									<input
+										value={layer.name}
+										on:change={(event) =>
+											updateLayerName(layer.id, (event.currentTarget as HTMLInputElement).value)}
+									/>
+								</div>
+
+								<div class="field">
+									<div class="field-label">Color</div>
+									<input
+										type="color"
+										value={layer.color}
+										on:input={(event) =>
+											updateLayerColor(layer.id, (event.currentTarget as HTMLInputElement).value)}
+									/>
+								</div>
+							</div>
+
 							<div class="button-row button-row-tight">
 								<button
 									class:primary={activeLayerId === layer.id}
 									class="button"
+									disabled={!layer.isVisible || layer.isLocked}
 									type="button"
 									on:click={() => setActiveLayer(layer.id)}
 								>
 									{activeLayerId === layer.id ? 'Active layer' : 'Set active'}
+								</button>
+								<button
+									class="button ghost"
+									disabled={index === 0}
+									type="button"
+									on:click={() => moveLayer(layer.id, -1)}
+								>
+									Move up
+								</button>
+								<button
+									class="button ghost"
+									disabled={index === orderedLayers.length - 1}
+									type="button"
+									on:click={() => moveLayer(layer.id, 1)}
+								>
+									Move down
 								</button>
 								<button class="button ghost" type="button" on:click={() => toggleLayerVisibility(layer.id)}>
 									{layer.isVisible ? 'Hide' : 'Show'}
@@ -2047,7 +2431,7 @@
 					</button>
 					<button
 						class="button"
-						disabled={selectionCount === 0}
+						disabled={selectionEditableFeatureIds.length === 0}
 						type="button"
 						on:click={createGroupFromSelection}
 					>
@@ -2057,8 +2441,9 @@
 
 				<p class="hint-text">
 					{selectionCount > 0
-						? `${selectionCount} feature${selectionCount === 1 ? '' : 's'} selected.`
+						? `${selectionEditableFeatureIds.length} of ${selectionCount} selected feature${selectionCount === 1 ? '' : 's'} editable.`
 						: 'Select features on the map to assign them to a group.'}
+					{selectionHasLockedFeatures ? ' Locked selections will be left unchanged.' : ''}
 				</p>
 
 				<div class="summary-list">
@@ -2066,13 +2451,47 @@
 						<div class="summary-card summary-card-static">
 							<div class="summary-head">
 								<div class="summary-title">{group.name}</div>
-								<div class="summary-kind">{group.isVisible ? 'Visible' : 'Hidden'}</div>
+								<div class="summary-kind">
+									{group.isLocked ? 'Locked' : group.isVisible ? 'Visible' : 'Hidden'}
+								</div>
 							</div>
-							<div class="summary-detail">{group.description || 'No description'}</div>
+							<div class="summary-detail">
+								{getFeatureCountForGroup(group.id)} object{getFeatureCountForGroup(group.id) === 1 ? '' : 's'}
+							</div>
+
+							<div class="field">
+								<div class="field-label">Group Name</div>
+								<input
+									value={group.name}
+									on:change={(event) =>
+										updateGroupName(group.id, (event.currentTarget as HTMLInputElement).value)}
+								/>
+							</div>
+
+							<div class="field">
+								<div class="field-label">Description</div>
+								<input
+									value={group.description}
+									placeholder="Optional group note"
+									on:change={(event) =>
+										updateGroupDescription(group.id, (event.currentTarget as HTMLInputElement).value)}
+								/>
+							</div>
+
+							<div class="field">
+								<div class="field-label">Color</div>
+								<input
+									type="color"
+									value={group.color}
+									on:input={(event) =>
+										updateGroupColor(group.id, (event.currentTarget as HTMLInputElement).value)}
+								/>
+							</div>
+
 							<div class="button-row button-row-tight">
 								<button
 									class="button"
-									disabled={selectionCount === 0}
+									disabled={selectionEditableFeatureIds.length === 0}
 									type="button"
 									on:click={() => assignSelectionToGroup(group.id)}
 								>
@@ -2168,8 +2587,14 @@
 				</div>
 
 				<div class="summary-list">
-					{#if featureSummaries.length > 0}
-						{#each featureSummaries as summary}
+					{#if hiddenFeatureCount > 0}
+						<p class="hint-text">
+							{hiddenFeatureCount} hidden object{hiddenFeatureCount === 1 ? '' : 's'} filtered by layer or group visibility.
+						</p>
+					{/if}
+
+					{#if visibleFeatureSummaries.length > 0}
+						{#each visibleFeatureSummaries as summary}
 							<button
 								class:is-selected={selectedFeatureIds.includes(summary.id)}
 								class="summary-card"
@@ -2182,6 +2607,10 @@
 								</div>
 								<div class="summary-detail">{summary.metric}</div>
 								<div class="summary-detail">{summary.detail}</div>
+								<div class="summary-detail">
+									Layer: {getFeatureLayerName(summary.id)}
+									{getFeatureGroupName(summary.id) ? `· Group: ${getFeatureGroupName(summary.id)}` : ''}
+								</div>
 							</button>
 						{/each}
 					{:else}
@@ -2202,6 +2631,7 @@
 					<TopActionBar
 						{activeTool}
 						{unitMode}
+						authoringEnabled={activeLayerEditable}
 						{drawCapable}
 						searchEnabled={locationSearchEnabled}
 						on:toolselect={(event) => handleToolbarToolSelect(event.detail.tool)}
@@ -2257,10 +2687,11 @@
 								<div class="status-card status-card-inline">
 									<div class="data-label">Selection</div>
 									<div class="status-value">
-										{selectionCount} feature{selectionCount === 1 ? '' : 's'}
+										{selectionEditableFeatureIds.length} editable of {selectionCount}
 									</div>
 									<div class="status-meta">
-										Create a new group or assign the current selection to an existing one.
+										Create a new group or assign editable selected features to an existing one.
+										{selectionHasLockedFeatures ? ' Locked selections stay unchanged.' : ''}
 									</div>
 								</div>
 
@@ -2277,7 +2708,7 @@
 								<div class="button-row">
 									<button
 										class="button primary"
-										disabled={selectionCount === 0}
+										disabled={selectionEditableFeatureIds.length === 0}
 										type="button"
 										on:click={createGroupFromSelection}
 									>
@@ -2289,7 +2720,7 @@
 									<div class="field">
 										<div class="field-label">Assign to Existing</div>
 										<select
-											disabled={selectionCount === 0}
+											disabled={selectionEditableFeatureIds.length === 0}
 											on:change={(event) => {
 												const groupId = (event.currentTarget as HTMLSelectElement).value;
 												assignSelectionToGroup(groupId.length > 0 ? groupId : null);
@@ -2422,7 +2853,10 @@
 						<div class="strip-card">
 							<div class="strip-label">Active Layer</div>
 							<div class="strip-value">{activeLayer.name}</div>
-							<div class="strip-meta">{activeLayer.isVisible ? 'Visible' : 'Hidden'} · {activeLayer.color}</div>
+							<div class="strip-meta">
+								{activeLayerStatus} · {activeLayer.color}
+								{authoringDisabledReason ? ` · ${authoringDisabledReason}` : ''}
+							</div>
 						</div>
 
 						<div class="strip-card">
@@ -2433,6 +2867,8 @@
 							<div class="strip-meta">
 								{#if pendingPointMove}
 									Click the map to reposition the selected point.
+								{:else if selectedFeatureLockedReason}
+									{selectedFeatureLockedReason}
 								{:else}
 									{selectedSummary ? selectedSummary.metric : 'Select a feature to inspect it.'}
 								{/if}
@@ -2482,11 +2918,13 @@
 			<RightInspector
 				{selectedFeature}
 				selectedSummary={selectedSummary}
-				{layers}
+				layers={orderedLayers}
 				{groups}
 				{unitMode}
 				selectedColor={selectedFeatureColor}
 				canEditColor={canEditSelectedColor}
+				canEditSelection={selectedFeatureCanEdit}
+				lockedReason={selectedFeatureLockedReason}
 				on:labelchange={(event) => updateSelectedFeatureLabel(event.detail.label)}
 				on:layerchange={(event) => updateSelectedFeatureLayer(event.detail.layerId)}
 				on:groupchange={(event) => updateSelectedFeatureGroup(event.detail.groupId)}
